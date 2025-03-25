@@ -1,0 +1,16 @@
+[package]
+name = "syspulse"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ratatui = "0.26"
+crossterm = "0.27"
+sysinfo = "0.29"
+colored = "2.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = "0.4"
+tokio = { version = "1.44.1", features = ["full", "time"] }
+clap = { version = "4.5", features = ["derive"] }
+lettre = "0.10.0-rc.3"
