@@ -89,7 +89,7 @@ async fn run_monitor(
                 .margin(1)
                 .constraints([
                     Constraint::Length(3),      // Time
-                    Constraint::Length(5),      // CPU & RAM side by side
+                    Constraint::Length(3),      // CPU & RAM side by side
                     Constraint::Percentage(30), // Disks
                     Constraint::Percentage(25), // Hardware & Status combined
                     Constraint::Percentage(40), // Processes (last section)
@@ -102,7 +102,14 @@ async fn run_monitor(
                 .style(Style::default().fg(Color::Cyan))
                 .block(Block::default().borders(Borders::ALL));
             f.render_widget(time_block, chunks[0]);
-
+            // Handle Ctrl+C and Ctrl+Z
+            if event::poll(Duration::from_millis(100)).unwrap_or(false) {
+                if let Ok(Event::Key(key)) = event::read() {
+                    if key.code == KeyCode::Char('q') || key.code == KeyCode::Char('c') && key.modifiers.contains(event::KeyModifiers::CONTROL) || key.code == KeyCode::Char('z') && key.modifiers.contains(event::KeyModifiers::CONTROL) {
+                        return;
+                    }
+                }
+            }
             // CPU and RAM side by side
             let cpu_ram_chunks = Layout::default()
                 .direction(Direction::Horizontal)
@@ -116,19 +123,31 @@ async fn run_monitor(
             let cpu_color = if cpu_usage > 90.0 { Color::Red } else if cpu_usage > 80.0 { Color::LightRed } else { Color::Green };
             let cpu_gauge = Gauge::default()
                 .block(Block::default().title("CPU Usage").borders(Borders::ALL))
-                .gauge_style(Style::default().fg(cpu_color))
+                .gauge_style(
+                    Style::default().fg(
+                        if cpu_usage > 80.0 { Color::Red } else { cpu_color } // تغییر رنگ در مصرف بالا
+                    )
+                )
                 .percent(cpu_usage as u16)
-                .label(format!("{:.2}%", cpu_usage));
+                .label(format!("{:.0}%", cpu_usage)); // حذف اعشار
+
             f.render_widget(cpu_gauge, cpu_ram_chunks[0]);
 
             // RAM Usage
             let total_mem = sys.total_memory() / 1024 / 1024;
             let used_mem = sys.used_memory() / 1024 / 1024;
+            let ram_percentage = if total_mem > 0 {
+                ((used_mem as f64 / total_mem as f64) * 100.0) as u16
+            } else {
+                0 // جلوگیری از تقسیم بر صفر
+            };
+
             let ram_gauge = Gauge::default()
                 .block(Block::default().title("RAM").borders(Borders::ALL))
                 .gauge_style(Style::default().fg(Color::Yellow))
-                .percent(((used_mem as f64 / total_mem as f64) * 100.0) as u16)
-                .label(format!("{} MB / {} MB", used_mem, total_mem));
+                .percent(ram_percentage)
+                .label(format!("{:.0}% | {} MB", ram_percentage, used_mem)); // نمایش مختصرتر
+
             f.render_widget(ram_gauge, cpu_ram_chunks[1]);
 
             // Disks
