@@ -5,6 +5,7 @@ pub struct Stats {
     cpu_history: VecDeque<f32>,
 }
 
+#[allow(dead_code)]
 impl Stats {
     pub fn new(capacity: usize) -> Self {
         Stats {

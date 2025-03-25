@@ -2,6 +2,7 @@ use sysinfo::{System, SystemExt, CpuExt, DiskExt};
 use colored::Colorize;
 use crate::stats::Stats;
 
+#[allow(dead_code)]
 pub fn clear_screen() {
   #[cfg(target_os = "windows")]
   std::process::Command::new("cmd").arg("/c").arg("cls").status().unwrap();
@@ -10,6 +11,7 @@ pub fn clear_screen() {
   std::process::Command::new("clear").status().unwrap();
 }
 
+#[allow(dead_code)]
 pub fn show_stats(sys: &System, stats: &Stats) {
   let cpu_usage = sys.global_cpu_info().cpu_usage();
   

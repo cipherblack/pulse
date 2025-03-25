@@ -10,7 +10,7 @@ use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout},
     style::{Color, Style},
-    widgets::{Block, Borders, Gauge, Paragraph, BarChart, Table, Row, Cell},
+    widgets::{Block, Borders, Gauge, Paragraph, Table, Row, Cell},
     Terminal,
 };
 use crossterm::{
@@ -76,6 +76,7 @@ async fn run_monitor(
     last_backup: &mut Instant,
     last_email: &mut Instant,
 ) -> io::Result<()> {
+    let _ = interval;
     let refresh_interval = Duration::from_millis(100);
 
     loop {
@@ -91,7 +92,7 @@ async fn run_monitor(
                     Constraint::Length(3),      // Time
                     Constraint::Length(3),      // CPU & RAM side by side
                     Constraint::Percentage(30), // Disks
-                    Constraint::Percentage(25), // Hardware & Status combined
+                    Constraint::Percentage(25), // Combined Disks & Hardware & Status
                     Constraint::Percentage(40), // Processes (last section)
                 ])
                 .split(f.size());
@@ -102,6 +103,7 @@ async fn run_monitor(
                 .style(Style::default().fg(Color::Cyan))
                 .block(Block::default().borders(Borders::ALL));
             f.render_widget(time_block, chunks[0]);
+
             // Handle Ctrl+C and Ctrl+Z
             if event::poll(Duration::from_millis(100)).unwrap_or(false) {
                 if let Ok(Event::Key(key)) = event::read() {
@@ -110,6 +112,7 @@ async fn run_monitor(
                     }
                 }
             }
+
             // CPU and RAM side by side
             let cpu_ram_chunks = Layout::default()
                 .direction(Direction::Horizontal)
@@ -125,11 +128,11 @@ async fn run_monitor(
                 .block(Block::default().title("CPU Usage").borders(Borders::ALL))
                 .gauge_style(
                     Style::default().fg(
-                        if cpu_usage > 80.0 { Color::Red } else { cpu_color } // تغییر رنگ در مصرف بالا
+                        if cpu_usage > 80.0 { Color::Red } else { cpu_color }
                     )
                 )
                 .percent(cpu_usage as u16)
-                .label(format!("{:.0}%", cpu_usage)); // حذف اعشار
+                .label(format!("{:.0}%", cpu_usage));
 
             f.render_widget(cpu_gauge, cpu_ram_chunks[0]);
 
@@ -146,11 +149,20 @@ async fn run_monitor(
                 .block(Block::default().title("RAM").borders(Borders::ALL))
                 .gauge_style(Style::default().fg(Color::Yellow))
                 .percent(ram_percentage)
-                .label(format!("{:.0}% | {} MB", ram_percentage, used_mem)); // نمایش مختصرتر
+                .label(format!("{:.0}% | {} MB", ram_percentage, used_mem));
 
             f.render_widget(ram_gauge, cpu_ram_chunks[1]);
 
-            // Disks
+            // Disks & Hardware & Status Combined
+            let disk_hw_chunks = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([
+                    Constraint::Percentage(50), // Disk Details
+                    Constraint::Percentage(50), // Hardware & Status
+                ])
+                .split(chunks[3]);
+
+            // Disk Details
             let mut disks: Vec<_> = sys.disks().iter().map(|disk| {
                 let total = disk.total_space() / 1_073_741_824;
                 let free = disk.available_space() / 1_073_741_824;
@@ -159,23 +171,19 @@ async fn run_monitor(
                 (disk.mount_point().to_string_lossy().to_string(), used as u64, total as u64, free as u64, is_mounted)
             }).collect();
             disks.sort_by(|a, b| a.0.cmp(&b.0));
-            let disk_texts: Vec<_> = disks.iter().enumerate().map(|(_, (name, used, total, free, is_mounted))| {
+            let disk_texts: Vec<_> = disks.iter().map(|(name, used, total, free, is_mounted)| {
                 format!("{}: {}/{} GB (Free: {} GB, {})", name, used, total, free, if *is_mounted { "In Use" } else { "Not Mounted" })
             }).collect();
-            let disk_bars = BarChart::default()
-                .block(Block::default().title("Disks").borders(Borders::ALL))
-                .data(&disks.iter().map(|(name, used, _, _, _)| (name.as_str(), *used)).collect::<Vec<_>>())
-                .bar_width(12)
-                .max(200)
-                .bar_style(Style::default().fg(Color::Blue));
-            f.render_widget(disk_bars, chunks[2]);
+
             let disk_details = Paragraph::new(disk_texts.join("\n"))
                 .style(Style::default().fg(Color::White))
                 .block(Block::default().title("Disk Details").borders(Borders::ALL));
-            f.render_widget(disk_details, chunks[2]);
 
-            // Combined Hardware & Status
+            f.render_widget(disk_details, disk_hw_chunks[0]);
+
+            // Hardware & Status
             let mut hw_status_text = Vec::new();
+
             // Hardware info
             if let Some(cpu) = sys.cpus().first() {
                 hw_status_text.push(format!("CPU: {}", cpu.brand()));
@@ -184,6 +192,7 @@ async fn run_monitor(
             for component in sys.components() {
                 hw_status_text.push(format!("{}: {:.1}°C", component.label(), component.temperature()));
             }
+
             // Status info
             if let Some(avg) = stats.average_cpu() {
                 hw_status_text.push(format!("Avg CPU (5 min): {:.2}%", avg));
@@ -196,10 +205,12 @@ async fn run_monitor(
             if cpu_usage > 90.0 {
                 hw_status_text.push("CRITICAL: CPU usage exceeds 90!".to_string());
             }
+
             let hw_status = Paragraph::new(hw_status_text.join("\n"))
                 .style(Style::default().fg(Color::LightGreen))
                 .block(Block::default().title("Hardware & Status").borders(Borders::ALL));
-            f.render_widget(hw_status, chunks[3]);
+
+            f.render_widget(hw_status, disk_hw_chunks[1]);
 
             // Processes (sorted by CPU usage)
             let mut processes: Vec<_> = sys.processes()
@@ -215,6 +226,7 @@ async fn run_monitor(
                 })
                 .collect();
             processes.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+
             let process_table = Table::new(
                 processes.into_iter().map(|(_, row)| row),
                 &[
